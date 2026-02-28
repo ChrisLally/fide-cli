@@ -1,5 +1,5 @@
-import { parseGraphStatementBatchJsonl } from "@fide-work/graph";
 import { getStringFlag, hasFlag, parseArgs } from "../../../lib/args.js";
+import { parseGraphStatementBatchJsonl } from "../../../lib/graph-batch.js";
 import { printJson, readUtf8, writeUtf8 } from "../../../lib/io.js";
 
 function ingestHelp(): string {

@@ -1,25 +1,27 @@
 {
   "name": "@chris-test/cli",
-  "version": "0.0.0-alpha.0",
-  "private": true,
+  "version": "0.0.0-alpha.1",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "bin": {
-    "fide": "./dist/bin/fide.js"
+    "fide": "dist/bin/fide.js"
   },
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check-types": "tsc --noEmit",
-    "smoke:local": "pnpm run build && node dist/scripts/smoke-local.js"
+    "smoke:local": "pnpm run build && node dist/scripts/smoke-local.js",
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@chris-test/fcp": "workspace:*",
-    "@fide-work/graph": "workspace:*",
+    "@chris-test/fcp": "^0.0.1-alpha.4",
     "rdflib": "^2.2.37"
   },
   "devDependencies": {
