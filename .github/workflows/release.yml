@@ -1,0 +1,24 @@
+name: Release Fide CLI
+
+on:
+  push:
+    tags:
+      - "fide-cli-v*"
+
+permissions:
+  contents: write
+  id-token: write
+  deployments: write
+
+jobs:
+  publish-cli:
+    permissions:
+      contents: write
+      id-token: write
+      deployments: write
+    uses: ChrisLally/lally-workflows/.github/workflows/release-publish.yml@2fdeceddf40d5c7148e782ad94136115941d57a1
+    with:
+      tag_prefix: "fide-cli-v"
+      package_dir: "."
+      install_working_directory: "."
+      deployment_environment: "Preview - fide-cli"
