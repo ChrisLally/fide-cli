@@ -1,6 +1,6 @@
 {
   "name": "@chris-test/cli",
-  "version": "0.0.0-alpha.3",
+  "version": "0.0.0-alpha.4",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -17,8 +17,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check-types": "tsc --noEmit",
-    "smoke:local": "pnpm run build && node dist/scripts/smoke-local.js",
-    "prepublishOnly": "pnpm run build"
+    "smoke:local": "pnpm run build && node dist/scripts/smoke-local.js"
   },
   "dependencies": {
     "@chris-test/fcp": "^0.0.1-alpha.4",
