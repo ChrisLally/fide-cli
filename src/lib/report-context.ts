@@ -13,8 +13,8 @@ const CONTEXT_SOURCES: Record<string, string[]> = {
   "evaluation-methods": [
     "packages/evaluation-methods/src/index.ts",
   ],
-  indexer: [
-    "packages/indexer/src/index.ts",
+  "graph-ingest": [
+    "packages/graph-ingest/src/index.ts",
   ],
 };
 
@@ -27,7 +27,7 @@ function extractTagValue(source: string, tag: string): string | null {
 function contextLabelForKey(key: string): string {
   if (key === "graph") return "Graph";
   if (key === "evaluation-methods") return "Evaluation Methods";
-  if (key === "indexer") return "Indexer";
+  if (key === "graph-ingest") return "Graph Ingest";
   return key;
 }
 
