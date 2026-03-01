@@ -10,8 +10,8 @@ type VocabSource = "schemaorg" | "prov" | "owl" | "fide";
 
 const VOCAB_SPECS: Record<VocabSource, { url: string; outFile: string; mediaType: string; convertToJsonLd: boolean }> = {
   schemaorg: {
-    url: "https://schema.org/version/latest/schemaorg-current-https.jsonld",
-    outFile: "schemaorg-current-https.jsonld",
+    url: "https://schema.org/docs/jsonldcontext.json",
+    outFile: "schemaorg-context.jsonld",
     mediaType: "application/ld+json",
     convertToJsonLd: false,
   },
@@ -55,64 +55,49 @@ function parseSource(raw: string | null): VocabSource[] | null {
 
 type FideEntityDefinition = {
   name: string;
-  hexCode: string;
+  code: string;
   description: string;
-  layer: string | null;
-  standard: string | null;
-  standardFit: string | null;
-  litmus: string | null;
+  layer: string;
+  standards: string[];
+  standardFit: "Exact" | "Close" | "Broad";
+  litmus: string;
 };
 
-function cleanJsdocBlock(block: string): string[] {
-  return block
-    .split("\n")
-    .map((line) => line.replace(/^\s*\*\s?/, "").trim());
-}
+function parseFideEntityDefinitions(specSource: string): FideEntityDefinition[] {
+  const parsed = JSON.parse(specSource) as {
+    entityTypes?: Record<string, {
+      code: string;
+      layer: string;
+      standards: string[];
+      standardFit: "Exact" | "Close" | "Broad";
+      description: string;
+      litmus: string;
+    }>;
+  };
 
-function pickTag(lines: string[], tagName: string): string | null {
-  const line = lines.find((item) => item.startsWith(`@${tagName}`));
-  if (!line) return null;
-  return line.replace(`@${tagName}`, "").trim() || null;
-}
-
-function parseFideEntityDefinitions(constantsSource: string): FideEntityDefinition[] {
-  const mapStart = constantsSource.indexOf("export const FIDE_ENTITY_TYPE_MAP = {");
-  const mapEnd = constantsSource.indexOf("} as const;", mapStart);
-  if (mapStart < 0 || mapEnd < 0) return [];
-  const mapBody = constantsSource.slice(mapStart, mapEnd);
-
-  const re = /\/\*\*([\s\S]*?)\*\/\s*([A-Za-z][A-Za-z0-9]*):\s*"([0-9a-f]{2})",/g;
-  const out: FideEntityDefinition[] = [];
-
-  for (const match of mapBody.matchAll(re)) {
-    const jsdoc = match[1] ?? "";
-    const name = match[2] ?? "";
-    const hexCode = match[3] ?? "";
-    const lines = cleanJsdocBlock(jsdoc);
-    const description = lines
-      .filter((line) => line.length > 0 && !line.startsWith("@"))
-      .join(" ")
-      .replace(/\s+/g, " ")
-      .trim();
-    out.push({
-      name,
-      hexCode,
-      description,
-      layer: pickTag(lines, "layer"),
-      standard: pickTag(lines, "standard"),
-      standardFit: pickTag(lines, "standardFit"),
-      litmus: pickTag(lines, "litmus"),
-    });
+  if (!parsed.entityTypes || typeof parsed.entityTypes !== "object") {
+    return [];
   }
-  return out;
+
+  return Object.entries(parsed.entityTypes)
+    .map(([name, entity]) => ({
+      name,
+      code: entity.code,
+      layer: entity.layer,
+      standards: entity.standards,
+      standardFit: entity.standardFit,
+      description: entity.description,
+      litmus: entity.litmus,
+    }))
+    .sort((a, b) => a.code.localeCompare(b.code));
 }
 
 async function buildFideJsonLd(repoRoot: string): Promise<string> {
-  const constantsPath = resolve(repoRoot, "packages/fcp/packages/fcp-js/src/fide-id/constants.ts");
-  const source = await readFile(constantsPath, "utf8");
+  const specPath = resolve(repoRoot, "packages/fide-context-protocol/spec/v1/entity-types.json");
+  const source = await readFile(specPath, "utf8");
   const entities = parseFideEntityDefinitions(source);
   if (entities.length === 0) {
-    throw new Error(`Failed to parse FIDE_ENTITY_TYPE_MAP from ${constantsPath}`);
+    throw new Error(`Failed to parse entity types from ${specPath}`);
   }
 
   const standardPrefixToBase: Record<string, string> = {
@@ -127,13 +112,13 @@ async function buildFideJsonLd(repoRoot: string): Promise<string> {
     skos: "http://www.w3.org/2004/02/skos/core#",
   };
 
-  const parseStandardUris = (raw: string | null): string[] => {
-    if (!raw) return [];
-    return raw
-      .split("+")
+  const parseStandardUris = (rawStandards: string[]): string[] => {
+    return rawStandards
       .map((part) => part.trim())
-      .filter((part) => part.length > 0)
       .map((part) => {
+        if (part.startsWith("http://") || part.startsWith("https://")) {
+          return part;
+        }
         const [prefix, local] = part.split(":");
         if (!prefix || !local) return null;
         const base = standardPrefixToBase[prefix];
@@ -149,13 +134,13 @@ async function buildFideJsonLd(repoRoot: string): Promise<string> {
       "@type": "schema:DefinedTerm",
       "rdfs:label": entity.name,
       "schema:name": entity.name,
-      "schema:termCode": entity.hexCode,
+      "schema:termCode": entity.code,
     };
     if (entity.description) node["rdfs:comment"] = entity.description;
     if (entity.layer) node["schema:category"] = entity.layer;
     if (entity.litmus) node["schema:disambiguatingDescription"] = entity.litmus;
 
-    const standardUris = parseStandardUris(entity.standard);
+    const standardUris = parseStandardUris(entity.standards);
     if (standardUris.length > 0) {
       if (entity.standardFit === "Exact") {
         node["owl:equivalentClass"] = standardUris.map((uri) => ({ "@id": uri }));
@@ -168,13 +153,17 @@ async function buildFideJsonLd(repoRoot: string): Promise<string> {
   });
 
   const doc = {
-    "@context": {
-      fide: "https://fide.work/vocab#",
-      schema: "https://schema.org/",
-      rdfs: "http://www.w3.org/2000/01/rdf-schema#",
-      owl: "http://www.w3.org/2002/07/owl#",
-    },
-    "@id": "fide:EntityTypeSet",
+    "@context": [
+      "https://schema.org/docs/jsonldcontext.json",
+      "https://www.w3.org/ns/prov.jsonld",
+      {
+        fide: "https://fide.work/spec/v1/",
+        fcp: "https://fide.work/spec/v1/context.jsonld#",
+        rdfs: "http://www.w3.org/2000/01/rdf-schema#",
+        owl: "http://www.w3.org/2002/07/owl#",
+      },
+    ],
+    "@id": "fide:entity-types",
     "@type": "schema:DefinedTermSet",
     "schema:name": "Fide Entity Types",
     "@graph": graph,
@@ -229,13 +218,20 @@ async function runPopulate(flags: Map<string, string | boolean>): Promise<number
   }
 
   const repoRoot = repoRootFromThisFile();
-  const outDir = resolve(repoRoot, "packages/evaluation-methods/vocab");
-  await mkdir(outDir, { recursive: true });
+  const specDir = resolve(repoRoot, "packages/fide-context-protocol/spec/v1");
+  const vendorDir = resolve(specDir, "vendor");
+  await mkdir(specDir, { recursive: true });
+  const needsVendorDir = sources.some((source) => source !== "fide");
+  if (needsVendorDir) {
+    await mkdir(vendorDir, { recursive: true });
+  }
 
   const written: Array<{ source: VocabSource; url: string; outPath: string; bytes: number }> = [];
   for (const source of sources) {
     const spec = VOCAB_SPECS[source];
-    const outPath = resolve(outDir, spec.outFile);
+    const outPath = source === "fide"
+      ? resolve(specDir, "context.jsonld")
+      : resolve(vendorDir, spec.outFile);
     let result: { bytes: number };
     if (source === "fide") {
       const jsonld = await buildFideJsonLd(repoRoot);
@@ -254,7 +250,7 @@ async function runPopulate(flags: Map<string, string | boolean>): Promise<number
 
   const summary = {
     mode: "vocab-populate",
-    outDir,
+    outDir: specDir,
     files: written,
   };
 
