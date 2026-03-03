@@ -5,7 +5,7 @@ Fide command-line interface.
 ## Commands
 
 - `fide init`
-- `fide statement <add|validate|root|normalize>`
+- `fide graph statements <add|validate|root|normalize>`
 - `fide graph ingest <apply|replay>`
 - `fide graph query`
 - `fide vocab ...`

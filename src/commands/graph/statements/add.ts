@@ -3,9 +3,9 @@ import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { buildStatementsWithRoot, fsd } from "@chris-test/graph";
 import type { StatementInput } from "@chris-test/fcp";
-import { getStringFlag, hasFlag, parseArgs } from "../../lib/args.js";
-import { parseGraphStatementBatchJsonl } from "../../lib/graph-batch.js";
-import { printJson, readUtf8, writeUtf8 } from "../../lib/io.js";
+import { getStringFlag, hasFlag } from "../../../lib/args.js";
+import { printJson, readUtf8, writeUtf8 } from "../../../lib/io.js";
+import { statementsHelp } from "./help.js";
 
 type AddStatementInput = {
   subject: string;
@@ -23,22 +23,6 @@ function parseAddInputFormat(value: string | null): AddInputFormat | null {
   if (!value) return null;
   if (value === "json" || value === "jsonl" || value === "fsd") return value;
   throw new Error(`Invalid --format value: ${value}. Expected one of: json, jsonl, fsd.`);
-}
-
-function statementHelp(): string {
-  return [
-    "Usage:",
-    "  fide statements add --subject <raw> --subject-type <type> --subject-source <type> --predicate <iri> --object <raw> --object-type <type> --object-source <type> [--no-normalize] [--out <batch.jsonl>] [--json]",
-    "  fide statements add --in <inputs> [--format <json|jsonl|fsd>] [--no-normalize] [--out <batch.jsonl>] [--json]",
-    "  fide statements add --stdin [--format <json|jsonl|fsd>] [--no-normalize] [--out <batch.jsonl>] [--json]",
-    "  fide statements validate --in <batch.jsonl> [--json]",
-    "  fide statements root --in <batch.jsonl>",
-    "  fide statements normalize --in <batch.jsonl> [--out <normalized.jsonl>]",
-    "",
-    "Notes:",
-    "  - Normalization is ON by default for `statements add`.",
-    "  - `--stdin`/`--in` can auto-detect json/jsonl/fsd, or use --format to force.",
-  ].join("\n");
 }
 
 function resolveStatementsDir(): string {
@@ -142,13 +126,8 @@ function detectAddInputFormat(raw: string): AddInputFormat {
   const trimmed = raw.trim();
   if (!trimmed) throw new Error("Input payload is empty.");
 
-  // FSD with frontmatter is unambiguous.
   if (trimmed.startsWith("---")) return "fsd";
-
-  // JSON array (`[{"..."}]` or `["..."]`) detection.
   if (/^\[\s*[{"]/.test(trimmed)) return "json";
-
-  // FSD line-form token detection (`[EntityType:identifier] ...`).
   if (/^\[\s*[A-Za-z][\w-]*\s*:/.test(trimmed)) return "fsd";
 
   const lines = trimmed
@@ -169,7 +148,7 @@ function parseAddInputsByFormat(raw: string, format: AddInputFormat): StatementI
   return fsd.parseFsdToStatementInputs(raw);
 }
 
-async function runAdd(flags: Map<string, string | boolean>): Promise<number> {
+export async function runStatementsAdd(flags: Map<string, string | boolean>): Promise<number> {
   const inPath = getStringFlag(flags, "in");
   const useStdin = hasFlag(flags, "stdin");
   const subject = getStringFlag(flags, "subject");
@@ -198,8 +177,8 @@ async function runAdd(flags: Map<string, string | boolean>): Promise<number> {
     statementInputs = parseAddInputsByFormat(raw, format);
   } else {
     if (!subject || !subjectType || !subjectSource || !predicate || !object || !objectType || !objectSource) {
-      console.error("Missing required flags for `statement add`.");
-      console.error(statementHelp());
+      console.error("Missing required flags for `graph statements add`.");
+      console.error(statementsHelp());
       return 1;
     }
     statementInputs = mapAddInputsToStatementInputs([
@@ -215,10 +194,7 @@ async function runAdd(flags: Map<string, string | boolean>): Promise<number> {
     ]);
   }
 
-  const batch = await buildStatementsWithRoot(
-    statementInputs,
-    { normalizeRawIdentifier: normalize }
-  );
+  const batch = await buildStatementsWithRoot(statementInputs, { normalizeRawIdentifier: normalize });
   const wires = batch.statements.map((statement) => ({
     s: statement.subjectFideId,
     sr: statement.subjectRawIdentifier,
@@ -252,60 +228,4 @@ async function runAdd(flags: Map<string, string | boolean>): Promise<number> {
     console.log(outPath);
   }
   return 0;
-}
-
-export { runInitCommand } from "./init.js";
-
-export async function runStatementCommand(command: string | undefined, args: string[]): Promise<number> {
-  if (!command || command === "--help") {
-    console.log(statementHelp());
-    return 0;
-  }
-
-  const { flags } = parseArgs(args);
-  if (command === "add") return runAdd(flags);
-
-  const inPath = getStringFlag(flags, "in");
-  if (!inPath) {
-    console.error("Missing required flag: --in <batch.jsonl>");
-    return 1;
-  }
-  const raw = await readUtf8(inPath);
-  const parsed = await parseGraphStatementBatchJsonl(raw);
-
-  switch (command) {
-    case "validate": {
-      const payload = {
-        ok: true,
-        statementCount: parsed.statementWires.length,
-        root: parsed.root,
-      };
-      if (hasFlag(flags, "json")) {
-        printJson(payload);
-      } else {
-        console.log(`OK statements=${payload.statementCount} root=${payload.root}`);
-      }
-      return 0;
-    }
-    case "root": {
-      console.log(parsed.root);
-      return 0;
-    }
-    case "normalize": {
-      const normalized = parsed.statementWires.map((wire) => JSON.stringify(wire)).join("\n");
-      const out = `${normalized}\n`;
-      const outPath = getStringFlag(flags, "out");
-      if (outPath) {
-        await writeUtf8(outPath, out);
-        console.log(outPath);
-      } else {
-        process.stdout.write(out);
-      }
-      return 0;
-    }
-    default:
-      console.error(`Unknown statement command: ${command}`);
-      console.error(statementHelp());
-      return 1;
-  }
 }

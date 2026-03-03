@@ -25,8 +25,7 @@
   },
   "dependencies": {
     "@chris-test/fcp": "workspace:*",
-    "@chris-test/graph": "workspace:*",
-    "rdflib": "^2.2.37"
+    "@chris-test/graph": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
