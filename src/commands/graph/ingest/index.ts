@@ -1,5 +1,5 @@
+import { formatGraphStatementBatchJsonl, parseGraphStatementBatchJsonl } from "@chris-test/graph";
 import { getStringFlag, hasFlag, parseArgs } from "../../../lib/args.js";
-import { parseGraphStatementBatchJsonl } from "../../../lib/graph-batch.js";
 import { printJson, readUtf8, writeUtf8 } from "../../../lib/io.js";
 
 function ingestHelp(): string {
@@ -27,7 +27,7 @@ async function runIngestApply(args: string[]): Promise<number> {
 
   const outPath = getStringFlag(flags, "out");
   if (outPath) {
-    const normalized = `${parsed.statementWires.map((wire) => JSON.stringify(wire)).join("\n")}\n`;
+    const normalized = formatGraphStatementBatchJsonl(parsed.statementWires);
     await writeUtf8(outPath, normalized);
   }
 

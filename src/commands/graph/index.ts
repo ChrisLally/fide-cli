@@ -7,7 +7,7 @@ function graphHelp(): string {
     "Usage:",
     "  fide graph ingest <apply|replay> [flags]",
     "  fide graph query sql --sql \"<query>\" [--json] [--allow-write]",
-    "  fide graph statements <add|validate|root|normalize> [flags]",
+    "  fide graph statements <add|validate|root> [flags]",
   ].join("\n");
 }
 

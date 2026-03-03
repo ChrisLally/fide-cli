@@ -1,11 +1,10 @@
 import { parseArgs } from "../../../lib/args.js";
-import { runStatementsAdd } from "./add.js";
-import { statementsHelp } from "./help.js";
-import { runStatementsNormalize } from "./normalize.js";
-import { runStatementsRoot } from "./root.js";
-import { runStatementsValidate } from "./validate.js";
+import { runStatementsAdd } from "./commands/add/index.js";
+import { statementsHelp } from "./commands/help.js";
+import { runStatementsRoot } from "./commands/root/index.js";
+import { runStatementsValidate } from "./commands/validate/index.js";
 
-export { runInitCommand } from "./init.js";
+export { runInitCommand } from "./commands/init/index.js";
 
 export async function runStatementCommand(command: string | undefined, args: string[]): Promise<number> {
   if (!command || command === "--help" || command === "-h" || command === "help") {
@@ -20,7 +19,6 @@ export async function runStatementCommand(command: string | undefined, args: str
 
   if (command === "validate") return runStatementsValidate(args);
   if (command === "root") return runStatementsRoot(args);
-  if (command === "normalize") return runStatementsNormalize(args);
 
   console.error(`Unknown statement command: ${command}`);
   console.error(statementsHelp());

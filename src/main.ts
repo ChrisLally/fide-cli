@@ -24,7 +24,7 @@ export async function runCli(argv: string[]): Promise<number> {
   const [group, command, ...rest] = argv;
   if (group === "init") {
     const initArgs = [command, ...rest].filter((value): value is string => typeof value === "string");
-    const { runInitCommand } = await import("./commands/graph/statements/init.js");
+    const { runInitCommand } = await import("./commands/graph/statements/commands/init/index.js");
     return runInitCommand(initArgs);
   }
 
