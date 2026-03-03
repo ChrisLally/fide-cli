@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { buildStatementsWithRoot } from "@chris-test/fcp";
+import { buildStatementsWithRoot } from "@chris-test/graph";
 import { getStringFlag, hasFlag, parseArgs } from "../../lib/args.js";
 import { parseGraphStatementBatchJsonl } from "../../lib/graph-batch.js";
 import { printJson, readUtf8, writeUtf8 } from "../../lib/io.js";
