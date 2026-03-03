@@ -1,7 +1,7 @@
-import { getStringFlag, hasFlag, parseArgs } from "../../../../../lib/args.js";
-import { printJson, readUtf8 } from "../../../../../lib/io.js";
-import { getRequiredBatchInputPath, parseStatementsInputFormat } from "../shared.js";
-import { resolveBatchFromInput } from "../targets/resolve-batch.js";
+import { getStringFlag, hasFlag, parseArgs } from "../../../lib/args.js";
+import { printJson, readUtf8 } from "../../../lib/io.js";
+import { getRequiredBatchInputPath, parseStatementsInputFormat } from "./shared.js";
+import { resolveBatchFromInput } from "./targets/resolve-batch.js";
 
 export async function runStatementsValidate(args: string[]): Promise<number> {
   const { flags } = parseArgs(args);

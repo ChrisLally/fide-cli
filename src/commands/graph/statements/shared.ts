@@ -1,4 +1,4 @@
-import { getStringFlag } from "../../../../lib/args.js";
+import { getStringFlag } from "../../../lib/args.js";
 
 export type StatementsInputFormat = "json" | "jsonl" | "fsd";
 

@@ -1,6 +1,6 @@
 import { runIngestCommand } from "./ingest/index.js";
 import { runQueryCommand } from "./query/index.js";
-import { runStatementCommand } from "./statements/index.js";
+import { runStatementsCommand } from "./statements/command.js";
 
 function graphHelp(): string {
   return [
@@ -28,7 +28,7 @@ export async function runGraphCommand(command: string | undefined, args: string[
   }
 
   if (command === "statements") {
-    return runStatementCommand(subcommand, rest);
+    return runStatementsCommand(subcommand, rest);
   }
 
   console.error(`Unknown graph command: ${command}`);
