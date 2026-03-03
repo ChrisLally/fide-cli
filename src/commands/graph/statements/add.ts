@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { buildStatementsWithRoot, fsd } from "@chris-test/graph";
+import { buildStatementsWithRoot, statementDoc } from "@chris-test/graph";
 import type { StatementInput } from "@chris-test/fcp";
 import { getStringFlag, hasFlag } from "../../../lib/args.js";
 import { printJson, readUtf8, writeUtf8 } from "../../../lib/io.js";
@@ -145,7 +145,7 @@ function detectAddInputFormat(raw: string): AddInputFormat {
 function parseAddInputsByFormat(raw: string, format: AddInputFormat): StatementInput[] {
   if (format === "json") return parseJsonInputs(raw);
   if (format === "jsonl") return parseJsonlInputs(raw);
-  return fsd.parseFsdToStatementInputs(raw);
+  return statementDoc.v0.parseStatementDocToStatementInputs(raw);
 }
 
 export async function runStatementsAdd(flags: Map<string, string | boolean>): Promise<number> {
