@@ -9,8 +9,8 @@ import { statementsHelp } from "./help.js";
 import {
   detectStatementsInputFormat,
   parseStatementsInputFormat,
-} from "./shared.js";
-import { mapSingleStatementInput, parseStatementInputsByFormat } from "./targets/parse-inputs.js";
+} from "../../../util/statements/shared.js";
+import { mapSingleStatementInput, parseStatementInputsByFormat } from "../../../util/statements/targets/parse-inputs.js";
 
 function resolveStatementsDir(): string {
   const cwd = process.cwd();
