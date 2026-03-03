@@ -3,6 +3,10 @@ export type ParsedArgs = {
   flags: Map<string, string | boolean>;
 };
 
+/**
+ * Parse CLI tokens into positional args and `--flag` values.
+ * Supports `--key value`, `--key=value`, and boolean flags.
+ */
 export function parseArgs(args: string[]): ParsedArgs {
   const positionals: string[] = [];
   const flags = new Map<string, string | boolean>();
@@ -38,6 +42,9 @@ export function parseArgs(args: string[]): ParsedArgs {
   return { positionals, flags };
 }
 
+/**
+ * Read a flag value only when the parsed value is a string.
+ */
 export function getStringFlag(
   flags: Map<string, string | boolean>,
   key: string,
@@ -47,6 +54,9 @@ export function getStringFlag(
   return null;
 }
 
+/**
+ * Check whether a flag key was provided.
+ */
 export function hasFlag(flags: Map<string, string | boolean>, key: string): boolean {
   return flags.has(key);
 }

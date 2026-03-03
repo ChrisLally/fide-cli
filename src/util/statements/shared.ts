@@ -2,12 +2,18 @@ import { getStringFlag } from "../../util/args.js";
 
 export type StatementsInputFormat = "json" | "jsonl" | "fsd";
 
+/**
+ * Parse optional `--format` flag into a supported statements input format.
+ */
 export function parseStatementsInputFormat(value: string | null): StatementsInputFormat | null {
   if (!value) return null;
   if (value === "json" || value === "jsonl" || value === "fsd") return value;
   throw new Error(`Invalid --format value: ${value}. Expected one of: json, jsonl, fsd.`);
 }
 
+/**
+ * Auto-detect statements input format from payload shape.
+ */
 export function detectStatementsInputFormat(raw: string): StatementsInputFormat {
   const trimmed = raw.trim();
   if (!trimmed) throw new Error("Input payload is empty.");
@@ -28,6 +34,9 @@ export function detectStatementsInputFormat(raw: string): StatementsInputFormat 
   throw new Error("Ambiguous input format. Pass --format <json|jsonl|fsd>.");
 }
 
+/**
+ * Resolve required `--in` flag for commands that require a file input path.
+ */
 export function getRequiredBatchInputPath(flags: Map<string, string | boolean>): string | null {
   const inPath = getStringFlag(flags, "in");
   if (!inPath) {

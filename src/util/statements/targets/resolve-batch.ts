@@ -2,6 +2,10 @@ import { buildStatementsWithRoot, parseGraphStatementBatchJsonl } from "@chris-t
 import { detectStatementsInputFormat, type StatementsInputFormat } from "../shared.js";
 import { parseStatementInputsByFormat } from "./parse-inputs.js";
 
+/**
+ * Resolve statement batch root/count from raw input payload.
+ * Accepts either statement inputs (`json`, `jsonl`, `fsd`) or graph JSONL wire batches.
+ */
 export async function resolveBatchFromInput(
   raw: string,
   options?: { format?: StatementsInputFormat | null; normalizeRawIdentifier?: boolean },

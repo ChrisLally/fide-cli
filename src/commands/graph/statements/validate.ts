@@ -3,6 +3,9 @@ import { printJson, readUtf8 } from "../../../util/io.js";
 import { getRequiredBatchInputPath, parseStatementsInputFormat } from "../../../util/statements/shared.js";
 import { resolveBatchFromInput } from "../../../util/statements/targets/resolve-batch.js";
 
+/**
+ * Validate a statements batch input and print the computed root.
+ */
 export async function runStatementsValidate(args: string[]): Promise<number> {
   const { flags } = parseArgs(args);
   if (hasFlag(flags, "help")) {

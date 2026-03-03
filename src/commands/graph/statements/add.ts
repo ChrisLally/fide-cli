@@ -12,6 +12,9 @@ import {
 } from "../../../util/statements/shared.js";
 import { mapSingleStatementInput, parseStatementInputsByFormat } from "../../../util/statements/targets/parse-inputs.js";
 
+/**
+ * Resolve project statements output directory under `.fide/statements`.
+ */
 function resolveStatementsDir(): string {
   const cwd = process.cwd();
   const fideDir = resolve(cwd, ".fide");
@@ -21,12 +24,18 @@ function resolveStatementsDir(): string {
   return resolve(fideDir, "statements");
 }
 
+/**
+ * Format a date as UTC year/month/day path segments.
+ */
 function ymdUtc(date: Date): { yyyy: string; mm: string; dd: string } {
   const iso = date.toISOString().slice(0, 10);
   const [yyyy, mm, dd] = iso.split("-");
   return { yyyy, mm, dd };
 }
 
+/**
+ * Read all UTF-8 content from stdin.
+ */
 async function readStdinUtf8(): Promise<string> {
   const chunks: Buffer[] = [];
 
@@ -41,6 +50,9 @@ async function readStdinUtf8(): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+/**
+ * Build a statements batch and write it to `.fide/statements/YYYY/MM/DD/<root>.jsonl`.
+ */
 export async function runStatementsAdd(flags: Map<string, string | boolean>): Promise<number> {
   const inPath = getStringFlag(flags, "in");
   const useStdin = hasFlag(flags, "stdin");

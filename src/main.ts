@@ -15,6 +15,9 @@ function helpText(): string {
   ].join("\n");
 }
 
+/**
+ * Execute the Fide CLI for the given argv token list.
+ */
 export async function runCli(argv: string[]): Promise<number> {
   if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
     console.log(helpText());

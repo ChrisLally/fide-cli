@@ -6,6 +6,9 @@ import { parseStatementDocInputs } from "./input-statement-doc.js";
 
 export { mapSingleStatementInput };
 
+/**
+ * Parse raw input into `StatementInput[]` using the resolved format.
+ */
 export function parseStatementInputsByFormat(raw: string, format: StatementsInputFormat): StatementInput[] {
   if (format === "json") return parseJsonInputs(raw);
   if (format === "jsonl") return parseJsonlInputs(raw);

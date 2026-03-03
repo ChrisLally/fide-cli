@@ -11,6 +11,9 @@ function graphHelp(): string {
   ].join("\n");
 }
 
+/**
+ * Route `fide graph <command>` subcommands.
+ */
 export async function runGraphCommand(command: string | undefined, args: string[]): Promise<number> {
   if (!command || command === "--help" || command === "-h" || command === "help") {
     console.log(graphHelp());

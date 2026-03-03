@@ -14,6 +14,9 @@ function ingestHelp(): string {
   ].join("\n");
 }
 
+/**
+ * Apply a statements batch to a graph ingest endpoint.
+ */
 async function runIngestApply(args: string[]): Promise<number> {
   const { flags } = parseArgs(args);
   const inPath = getStringFlag(flags, "in");
@@ -52,6 +55,9 @@ async function runIngestApply(args: string[]): Promise<number> {
   return 0;
 }
 
+/**
+ * Replay helper placeholder for ingest workflow.
+ */
 function runIngestReplay(args: string[]): number {
   const { flags } = parseArgs(args);
   const root = getStringFlag(flags, "from");
@@ -76,6 +82,9 @@ function runIngestReplay(args: string[]): number {
   return 1;
 }
 
+/**
+ * Route `fide graph ingest <command>` subcommands.
+ */
 export async function runIngestCommand(command: string | undefined, args: string[]): Promise<number> {
   if (!command || command === "--help" || command === "-h" || command === "help") {
     console.log(ingestHelp());

@@ -1,6 +1,9 @@
 import type { StatementInput } from "@chris-test/fcp";
 import { parseJsonInputs } from "./input-json.js";
 
+/**
+ * Parse newline-delimited JSON statement rows into `StatementInput[]`.
+ */
 export function parseJsonlInputs(raw: string): StatementInput[] {
   const trimmed = raw.trim();
   if (!trimmed) {

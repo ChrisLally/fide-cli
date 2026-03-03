@@ -10,6 +10,9 @@ type AddStatementInput = {
   objectSource: string;
 };
 
+/**
+ * Validate raw JSON payload shape for statements add input.
+ */
 function normalizeAddInputs(parsed: unknown): AddStatementInput[] {
   if (!Array.isArray(parsed) || parsed.length === 0) {
     throw new Error("Invalid input payload. Expected non-empty array of statement inputs.");
@@ -35,6 +38,9 @@ function normalizeAddInputs(parsed: unknown): AddStatementInput[] {
   });
 }
 
+/**
+ * Convert CLI add-input rows into canonical `StatementInput` values.
+ */
 function mapAddInputsToStatementInputs(inputs: AddStatementInput[]): StatementInput[] {
   return inputs.map((input) => ({
     subject: {
@@ -55,6 +61,9 @@ function mapAddInputsToStatementInputs(inputs: AddStatementInput[]): StatementIn
   }));
 }
 
+/**
+ * Parse statement inputs from JSON array payload.
+ */
 export function parseJsonInputs(raw: string): StatementInput[] {
   const trimmed = raw.trim();
   if (!trimmed) {
@@ -65,6 +74,9 @@ export function parseJsonInputs(raw: string): StatementInput[] {
   return mapAddInputsToStatementInputs(normalizeAddInputs(parsed));
 }
 
+/**
+ * Map one ad-hoc statement row into a canonical `StatementInput`.
+ */
 export function mapSingleStatementInput(input: AddStatementInput): StatementInput {
   return mapAddInputsToStatementInputs([input])[0];
 }

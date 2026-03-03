@@ -3,6 +3,9 @@ import { readUtf8 } from "../../../util/io.js";
 import { getRequiredBatchInputPath, parseStatementsInputFormat } from "../../../util/statements/shared.js";
 import { resolveBatchFromInput } from "../../../util/statements/targets/resolve-batch.js";
 
+/**
+ * Compute and print only the deterministic root for a statements batch.
+ */
 export async function runStatementsRoot(args: string[]): Promise<number> {
   const { flags } = parseArgs(args);
   if (hasFlag(flags, "help")) {

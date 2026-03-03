@@ -12,6 +12,9 @@ function queryHelp(): string {
   ].join("\n");
 }
 
+/**
+ * Route `fide graph query` command variants.
+ */
 export async function runQueryCommand(command: string | undefined, args: string[]): Promise<number> {
   if (!command || command === "--help" || command === "-h" || command === "help") {
     console.log(queryHelp());

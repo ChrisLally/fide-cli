@@ -4,6 +4,9 @@ import { statementsHelp } from "./help.js";
 import { runStatementsRoot } from "./root.js";
 import { runStatementsValidate } from "./validate.js";
 
+/**
+ * Route `fide graph statements <command>` subcommands.
+ */
 export async function runStatementCommand(command: string | undefined, args: string[]): Promise<number> {
   if (!command || command === "--help" || command === "-h" || command === "help") {
     console.log(statementsHelp());
