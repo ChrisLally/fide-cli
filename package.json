@@ -24,8 +24,8 @@
     "smoke:local": "pnpm run build && node dist/scripts/smoke-local.js"
   },
   "dependencies": {
-    "@chris-test/fcp": "alpha",
-    "@chris-test/graph": "alpha",
+    "@chris-test/fcp": "workspace:*",
+    "@chris-test/graph": "workspace:*",
     "rdflib": "^2.2.37"
   },
   "devDependencies": {
