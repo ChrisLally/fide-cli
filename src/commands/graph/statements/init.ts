@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { getStringFlag, hasFlag, parseArgs } from "../../../lib/args.js";
-import { printJson } from "../../../lib/io.js";
+import { getStringFlag, hasFlag, parseArgs } from "../../../util/args.js";
+import { printJson } from "../../../util/io.js";
 
 function initHelp(): string {
   return [

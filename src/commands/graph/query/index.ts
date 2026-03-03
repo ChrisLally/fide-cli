@@ -1,5 +1,5 @@
-import { hasFlag, parseArgs } from "../../../lib/args.js";
-import { printJson } from "../../../lib/io.js";
+import { hasFlag, parseArgs } from "../../../util/args.js";
+import { printJson } from "../../../util/io.js";
 
 function queryHelp(): string {
   return [

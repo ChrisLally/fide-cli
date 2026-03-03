@@ -1,6 +1,6 @@
 import { formatGraphStatementBatchJsonl, parseGraphStatementBatchJsonl } from "@chris-test/graph";
-import { getStringFlag, hasFlag, parseArgs } from "../../../lib/args.js";
-import { printJson, readUtf8, writeUtf8 } from "../../../lib/io.js";
+import { getStringFlag, hasFlag, parseArgs } from "../../../util/args.js";
+import { printJson, readUtf8, writeUtf8 } from "../../../util/io.js";
 
 function ingestHelp(): string {
   return [

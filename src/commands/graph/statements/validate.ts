@@ -1,5 +1,5 @@
-import { getStringFlag, hasFlag, parseArgs } from "../../../lib/args.js";
-import { printJson, readUtf8 } from "../../../lib/io.js";
+import { getStringFlag, hasFlag, parseArgs } from "../../../util/args.js";
+import { printJson, readUtf8 } from "../../../util/io.js";
 import { getRequiredBatchInputPath, parseStatementsInputFormat } from "../../../util/statements/shared.js";
 import { resolveBatchFromInput } from "../../../util/statements/targets/resolve-batch.js";
 

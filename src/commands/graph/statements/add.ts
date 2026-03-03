@@ -3,8 +3,8 @@ import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { buildStatementsWithRoot } from "@chris-test/graph";
 import type { StatementInput } from "@chris-test/fcp";
-import { getStringFlag, hasFlag } from "../../../lib/args.js";
-import { printJson, readUtf8, writeUtf8 } from "../../../lib/io.js";
+import { getStringFlag, hasFlag } from "../../../util/args.js";
+import { printJson, readUtf8, writeUtf8 } from "../../../util/io.js";
 import { statementsHelp } from "./help.js";
 import {
   detectStatementsInputFormat,

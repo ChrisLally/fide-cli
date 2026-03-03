@@ -1,4 +1,4 @@
-import { parseArgs } from "../../../lib/args.js";
+import { parseArgs } from "../../../util/args.js";
 import { runStatementsAdd } from "./add.js";
 import { statementsHelp } from "./help.js";
 import { runStatementsRoot } from "./root.js";
