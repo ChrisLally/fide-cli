@@ -7,7 +7,7 @@ function helpText(): string {
     "  fide init [flags]",
     "",
     "Groups:",
-    "  statement   add | validate | root | normalize",
+    "  statements  add | validate | root | normalize",
     "  graph       ingest | query",
     "  project     init",
     "  vocab       populate",
@@ -32,7 +32,6 @@ export async function runCli(argv: string[]): Promise<number> {
   }
 
   switch (group) {
-    case "statement":
     case "statements": {
       const { runStatementCommand } = await import("./commands/statement/index.js");
       return runStatementCommand(command, rest);

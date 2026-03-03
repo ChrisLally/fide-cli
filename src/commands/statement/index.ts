@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { buildStatementsWithRoot } from "@chris-test/graph";
+import { buildStatementsWithRoot, fsd } from "@chris-test/graph";
+import type { StatementInput } from "@chris-test/fcp";
 import { getStringFlag, hasFlag, parseArgs } from "../../lib/args.js";
 import { parseGraphStatementBatchJsonl } from "../../lib/graph-batch.js";
 import { printJson, readUtf8, writeUtf8 } from "../../lib/io.js";
@@ -16,14 +17,27 @@ type AddStatementInput = {
   objectSource: string;
 };
 
+type AddInputFormat = "json" | "jsonl" | "fsd";
+
+function parseAddInputFormat(value: string | null): AddInputFormat | null {
+  if (!value) return null;
+  if (value === "json" || value === "jsonl" || value === "fsd") return value;
+  throw new Error(`Invalid --format value: ${value}. Expected one of: json, jsonl, fsd.`);
+}
+
 function statementHelp(): string {
   return [
     "Usage:",
-    "  fide statement add --subject <raw> --subject-type <type> --subject-source <type> --predicate <iri> --object <raw> --object-type <type> --object-source <type> [--normalize] [--out <batch.jsonl>] [--json]",
-    "  fide statement add --in <inputs.json> [--normalize] [--out <batch.jsonl>] [--json]",
-    "  fide statement validate --in <batch.jsonl> [--json]",
-    "  fide statement root --in <batch.jsonl>",
-    "  fide statement normalize --in <batch.jsonl> [--out <normalized.jsonl>]",
+    "  fide statements add --subject <raw> --subject-type <type> --subject-source <type> --predicate <iri> --object <raw> --object-type <type> --object-source <type> [--no-normalize] [--out <batch.jsonl>] [--json]",
+    "  fide statements add --in <inputs> [--format <json|jsonl|fsd>] [--no-normalize] [--out <batch.jsonl>] [--json]",
+    "  fide statements add --stdin [--format <json|jsonl|fsd>] [--no-normalize] [--out <batch.jsonl>] [--json]",
+    "  fide statements validate --in <batch.jsonl> [--json]",
+    "  fide statements root --in <batch.jsonl>",
+    "  fide statements normalize --in <batch.jsonl> [--out <normalized.jsonl>]",
+    "",
+    "Notes:",
+    "  - Normalization is ON by default for `statements add`.",
+    "  - `--stdin`/`--in` can auto-detect json/jsonl/fsd, or use --format to force.",
   ].join("\n");
 }
 
@@ -42,8 +56,122 @@ function ymdUtc(date: Date): { yyyy: string; mm: string; dd: string } {
   return { yyyy, mm, dd };
 }
 
+async function readStdinUtf8(): Promise<string> {
+  const chunks: Buffer[] = [];
+
+  for await (const chunk of process.stdin) {
+    if (typeof chunk === "string") {
+      chunks.push(Buffer.from(chunk));
+    } else {
+      chunks.push(chunk);
+    }
+  }
+
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function normalizeAddInputs(parsed: unknown): AddStatementInput[] {
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    throw new Error("Invalid input payload. Expected non-empty array of statement inputs.");
+  }
+
+  return parsed.map((item) => {
+    const candidate = item as Partial<AddStatementInput>;
+    if (
+      !candidate.subject || !candidate.subjectType || !candidate.subjectSource ||
+      !candidate.predicate || !candidate.object || !candidate.objectType || !candidate.objectSource
+    ) {
+      throw new Error("Invalid input item. Each item must include subject/subjectType/subjectSource/predicate/object/objectType/objectSource.");
+    }
+    return {
+      subject: candidate.subject,
+      subjectType: candidate.subjectType,
+      subjectSource: candidate.subjectSource,
+      predicate: candidate.predicate,
+      object: candidate.object,
+      objectType: candidate.objectType,
+      objectSource: candidate.objectSource,
+    };
+  });
+}
+
+function mapAddInputsToStatementInputs(inputs: AddStatementInput[]): StatementInput[] {
+  return inputs.map((input) => ({
+    subject: {
+      rawIdentifier: input.subject,
+      entityType: input.subjectType as StatementInput["subject"]["entityType"],
+      sourceType: input.subjectSource as StatementInput["subject"]["sourceType"],
+    },
+    predicate: {
+      rawIdentifier: input.predicate,
+      entityType: "Concept",
+      sourceType: "NetworkResource",
+    },
+    object: {
+      rawIdentifier: input.object,
+      entityType: input.objectType as StatementInput["object"]["entityType"],
+      sourceType: input.objectSource as StatementInput["object"]["sourceType"],
+    },
+  }));
+}
+
+function parseJsonInputs(raw: string): StatementInput[] {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error("Input payload is empty.");
+  }
+
+  const parsed = JSON.parse(trimmed) as unknown;
+  return mapAddInputsToStatementInputs(normalizeAddInputs(parsed));
+}
+
+function parseJsonlInputs(raw: string): StatementInput[] {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error("Input payload is empty.");
+  }
+  const rows = trimmed
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("#"))
+    .map((line) => JSON.parse(line) as unknown);
+  return mapAddInputsToStatementInputs(normalizeAddInputs(rows));
+}
+
+function detectAddInputFormat(raw: string): AddInputFormat {
+  const trimmed = raw.trim();
+  if (!trimmed) throw new Error("Input payload is empty.");
+
+  // FSD with frontmatter is unambiguous.
+  if (trimmed.startsWith("---")) return "fsd";
+
+  // JSON array (`[{"..."}]` or `["..."]`) detection.
+  if (/^\[\s*[{"]/.test(trimmed)) return "json";
+
+  // FSD line-form token detection (`[EntityType:identifier] ...`).
+  if (/^\[\s*[A-Za-z][\w-]*\s*:/.test(trimmed)) return "fsd";
+
+  const lines = trimmed
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("#"));
+
+  if (lines.length > 0 && lines.every((line) => line.startsWith("{"))) {
+    return "jsonl";
+  }
+
+  throw new Error("Ambiguous input format. Pass --format <json|jsonl|fsd>.");
+}
+
+function parseAddInputsByFormat(raw: string, format: AddInputFormat): StatementInput[] {
+  if (format === "json") return parseJsonInputs(raw);
+  if (format === "jsonl") return parseJsonlInputs(raw);
+  return fsd.parseFsdToStatementInputs(raw);
+}
+
 async function runAdd(flags: Map<string, string | boolean>): Promise<number> {
   const inPath = getStringFlag(flags, "in");
+  const useStdin = hasFlag(flags, "stdin");
   const subject = getStringFlag(flags, "subject");
   const subjectType = getStringFlag(flags, "subject-type");
   const subjectSource = getStringFlag(flags, "subject-source");
@@ -51,57 +179,44 @@ async function runAdd(flags: Map<string, string | boolean>): Promise<number> {
   const object = getStringFlag(flags, "object");
   const objectType = getStringFlag(flags, "object-type");
   const objectSource = getStringFlag(flags, "object-source");
+  const formatFlag = parseAddInputFormat(getStringFlag(flags, "format"));
   const outPathFlag = getStringFlag(flags, "out");
-  const normalize = hasFlag(flags, "normalize");
+  const normalize = !hasFlag(flags, "no-normalize");
 
-  let inputs: AddStatementInput[] = [];
+  let statementInputs: StatementInput[] = [];
+  if (inPath && useStdin) {
+    throw new Error("Use either --in or --stdin, not both.");
+  }
+
   if (inPath) {
     const raw = await readUtf8(inPath);
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      throw new Error("Invalid --in payload. Expected non-empty JSON array.");
-    }
-    inputs = parsed.map((item) => {
-      const candidate = item as Partial<AddStatementInput>;
-      if (
-        !candidate.subject || !candidate.subjectType || !candidate.subjectSource ||
-        !candidate.predicate || !candidate.object || !candidate.objectType || !candidate.objectSource
-      ) {
-        throw new Error("Invalid --in payload item. Each item must include subject/subjectType/subjectSource/predicate/object/objectType/objectSource.");
-      }
-      return {
-        subject: candidate.subject,
-        subjectType: candidate.subjectType,
-        subjectSource: candidate.subjectSource,
-        predicate: candidate.predicate,
-        object: candidate.object,
-        objectType: candidate.objectType,
-        objectSource: candidate.objectSource,
-      };
-    });
+    const format = formatFlag ?? detectAddInputFormat(raw);
+    statementInputs = parseAddInputsByFormat(raw, format);
+  } else if (useStdin) {
+    const raw = await readStdinUtf8();
+    const format = formatFlag ?? detectAddInputFormat(raw);
+    statementInputs = parseAddInputsByFormat(raw, format);
   } else {
     if (!subject || !subjectType || !subjectSource || !predicate || !object || !objectType || !objectSource) {
       console.error("Missing required flags for `statement add`.");
       console.error(statementHelp());
       return 1;
     }
-    inputs = [{
-      subject,
-      subjectType,
-      subjectSource,
-      predicate,
-      object,
-      objectType,
-      objectSource,
-    }];
+    statementInputs = mapAddInputsToStatementInputs([
+      {
+        subject,
+        subjectType,
+        subjectSource,
+        predicate,
+        object,
+        objectType,
+        objectSource,
+      },
+    ]);
   }
 
   const batch = await buildStatementsWithRoot(
-    inputs.map((input) => ({
-      subject: { rawIdentifier: input.subject, entityType: input.subjectType as any, sourceType: input.subjectSource as any },
-      predicate: { rawIdentifier: input.predicate, entityType: "Concept", sourceType: "NetworkResource" },
-      object: { rawIdentifier: input.object, entityType: input.objectType as any, sourceType: input.objectSource as any },
-    })),
+    statementInputs,
     { normalizeRawIdentifier: normalize }
   );
   const wires = batch.statements.map((statement) => ({
