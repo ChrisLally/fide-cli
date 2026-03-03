@@ -10,15 +10,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": [
-    "src/bin/**/*.ts",
-    "src/index.ts",
-    "src/main.ts",
-    "src/lib/**/*.ts",
-    "src/scripts/smoke-local.ts",
-    "src/commands/statement/**/*.ts",
-    "src/commands/graph/**/*.ts",
-    "src/commands/vocab/**/*.ts",
-    "src/commands/project/**/*.ts"
-  ]
+  "include": ["src/**/*.ts"]
 }

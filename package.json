@@ -21,7 +21,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check-types": "tsc --noEmit",
-    "smoke:local": "pnpm run build && node dist/scripts/smoke-local.js"
+    "smoke:local": "pnpm run build && pnpm exec tsx scripts/smoke-local.ts"
   },
   "dependencies": {
     "@chris-test/fcp": "workspace:*",

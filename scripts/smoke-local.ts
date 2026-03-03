@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { calculateFideId, calculateStatementFideId } from "@chris-test/fcp";
-import { markdownTable, writeMarkdownReport } from "../util/report.js";
+import { markdownTable, writeMarkdownReport } from "../src/util/report.js";
 
 type ReportItem = {
   slug: string;
