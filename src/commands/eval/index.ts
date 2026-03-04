@@ -1,5 +1,6 @@
 import { runEvalDraft } from "./draft.js";
 import { evalHelp } from "./help.js";
+import { runEvalPrompt } from "./prompt.js";
 
 /**
  * Route `fide eval <command>` subcommands.
@@ -17,6 +18,10 @@ export async function runEvalCommand(command: string | undefined, args: string[]
       return 0;
     }
     return code;
+  }
+
+  if (command === "prompt") {
+    return runEvalPrompt(args);
   }
 
   console.error(`Unknown eval command: ${command}`);

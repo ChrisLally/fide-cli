@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { evaluateSameAsPersonV1, buildPersonV1PromptFromResult, type FideIdStatement } from "@chris-test/evaluation-methods";
-import { parseGraphStatementBatchJsonl } from "@chris-test/graph";
+import { parseGraphStatementBatchJsonl, statementDoc } from "@chris-test/graph";
 import { getStringFlag, hasFlag, parseArgs } from "../../util/args.js";
 import { printJson, readUtf8, writeUtf8 } from "../../util/io.js";
 
@@ -16,7 +16,6 @@ type EvalDraftOptions = {
   target: string;
   from: string | null;
   agent: string | null;
-  out: string | null;
   json: boolean;
 };
 
@@ -125,25 +124,54 @@ function mapToFideIdStatements(
 function buildAgentPrompt(evalPrompt: string): string {
   return [
     "You are drafting Fide graph statements.",
-    "Return ONLY a statement document in markdown-compatible text with this exact frontmatter:",
-    "---",
-    "type: fide-statements",
-    "version: v0",
-    "defaults:",
-    "  subject:",
-    "    source: NetworkResource",
-    "  object:",
-    "    source: NetworkResource",
-    "---",
+    "Return ONLY statement lines in this exact format:",
+    "[EntityType:subjectRaw] predicateRawIdentifier [EntityType:objectRaw]",
     "",
-    "Then include one statement per line in the format:",
-    "[EntityType:subjectRaw] predicate [EntityType:objectRaw]",
-    "",
-    "Do not include prose before or after the document.",
+    "Rules:",
+    "- No frontmatter",
+    "- No prose",
+    "- No markdown code fences",
+    "- One statement per line",
+    "- Use only these entity types unless strictly necessary: Concept, NetworkResource, TextLiteral, NumberLiteral, BooleanLiteral",
+    "- Do NOT use types like Iri, Decision, Number, Boolean",
+    "- Refer to the target sameAs statement semantically (subject/object raw identifiers and evidence context), not by opaque IDs",
     "",
     "Evaluation context:",
     evalPrompt,
+    "",
+    "Demo command (heredoc, no temp file):",
+    "fide graph statements add --stdin --draft <<'EOF'",
+    "[Concept:https://example.org/spec] https://schema.org/name [TextLiteral/TextLiteral:Example Spec]",
+    "[Concept:https://example.org/spec] https://www.w3.org/2002/07/owl#sameAs [Concept:https://example.org/spec/v1]",
+    "EOF",
   ].join("\n");
+}
+
+function extractStatementLines(raw: string): string {
+  const lines = raw
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("```"));
+
+  const candidates = lines.filter((line) => /^\[[^\]]+\]\s+\S+\s+\[[^\]]+\]$/.test(line));
+  return candidates.join("\n");
+}
+
+function wrapLinesAsStatementDoc(statementLines: string): string {
+  const linesOnly = extractStatementLines(statementLines);
+  if (!linesOnly) {
+    throw new Error("Agent did not return any valid statement lines.");
+  }
+
+  const inputs = statementDoc.v0.parseStatementDocToStatementInputs(linesOnly);
+  const baseDoc = statementDoc.v0.formatStatementInputsAsStatementDoc(inputs, {
+    defaults: {
+      subject: { sourceType: "NetworkResource" },
+      object: { sourceType: "NetworkResource" },
+    },
+  });
+  return baseDoc.replace(/^---\n/, "---\ntype: fide-statements\nversion: v0\n");
 }
 
 function parseOptions(args: string[]): EvalDraftOptions {
@@ -157,13 +185,15 @@ function parseOptions(args: string[]): EvalDraftOptions {
   const target = getStringFlag(flags, "target");
   if (!method) throw new Error("Missing required flag --method <id@v>.");
   if (!target) throw new Error("Missing required flag --target <statementFideId>.");
+  if (hasFlag(flags, "out")) {
+    throw new Error("`eval draft` no longer accepts --out. Output path is auto-generated under .fide/evals/drafts/YYYY/MM/DD/.");
+  }
 
   return {
     method,
     target,
     from: getStringFlag(flags, "from"),
     agent: getStringFlag(flags, "agent"),
-    out: getStringFlag(flags, "out"),
     json: hasFlag(flags, "json"),
   };
 }
@@ -210,15 +240,17 @@ export async function runEvalDraft(args: string[]): Promise<number> {
 
     const methodSlug = sanitizePart(options.method.replace("@", "__"));
     const targetSlug = sanitizePart(options.target);
-    const defaultOut = `.fide/statement-drafts/${utcDatePath()}/${methodSlug}__${targetSlug}.md`;
-    const outPath = options.out ?? defaultOut;
-    const promptPath = `.fide/evals/prompts/${methodSlug}/${targetSlug}.prompt.md`;
+    const datePath = utcDatePath();
+    const defaultOut = `.fide/evals/drafts/${datePath}/${methodSlug}__${targetSlug}.md`;
+    const outPath = defaultOut;
+    const promptPath = `.fide/evals/prompts/${datePath}/${methodSlug}__${targetSlug}.prompt.md`;
     const promptHash = sha256Hex(agentPrompt);
     await writeUtf8(promptPath, `${agentPrompt.trimEnd()}\n`);
 
     let draftContent = agentPrompt;
     if (options.agent === "codex") {
-      draftContent = await runCodexDraft(agentPrompt);
+      const lines = await runCodexDraft(agentPrompt);
+      draftContent = wrapLinesAsStatementDoc(lines);
     } else if (options.agent) {
       throw new Error(`Unsupported agent: ${options.agent}. Supported: codex`);
     }

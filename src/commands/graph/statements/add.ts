@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { buildStatementsWithRoot } from "@chris-test/graph";
-import type { StatementInput } from "@chris-test/fcp";
+import { buildStatementsWithRoot, statementDoc } from "@chris-test/graph";
+import { parseFideId, type StatementInput } from "@chris-test/fcp";
 import { getStringFlag, hasFlag } from "../../../util/args.js";
 import { printJson, readUtf8, writeUtf8 } from "../../../util/io.js";
 import { statementsHelp } from "./help.js";
@@ -65,8 +65,9 @@ export async function runStatementsAdd(flags: Map<string, string | boolean>): Pr
   const objectSource = getStringFlag(flags, "object-source");
   const formatFlag = parseStatementsInputFormat(getStringFlag(flags, "format"));
   const normalize = !hasFlag(flags, "no-normalize");
+  const draftMode = hasFlag(flags, "draft");
   if (hasFlag(flags, "out")) {
-    throw new Error("`--out` is not supported for `graph statements add`. Output is always written under .fide/statements/YYYY/MM/DD/<root>.jsonl.");
+    throw new Error("`graph statements add` no longer accepts --out. Output path is auto-generated.");
   }
 
   let statementInputs: StatementInput[] = [];
@@ -100,28 +101,61 @@ export async function runStatementsAdd(flags: Map<string, string | boolean>): Pr
   }
 
   const batch = await buildStatementsWithRoot(statementInputs, { normalizeRawIdentifier: normalize });
-  const wires = batch.statements.map((statement) => ({
-    s: statement.subjectFideId,
-    sr: statement.subjectRawIdentifier,
-    p: statement.predicateFideId,
-    pr: statement.predicateRawIdentifier,
-    o: statement.objectFideId,
-    or: statement.objectRawIdentifier,
-  }));
-  const jsonl = `${wires.map((wire) => JSON.stringify(wire)).join("\n")}\n`;
-
   const outPath = (() => {
     const { yyyy, mm, dd } = ymdUtc(new Date());
+    if (draftMode) {
+      return resolve(process.cwd(), ".fide", "statement-drafts", yyyy, mm, dd, `${batch.root}.md`);
+    }
     return resolve(resolveStatementsDir(), yyyy, mm, dd, `${batch.root}.jsonl`);
   })();
 
+  let output: string;
+  if (draftMode) {
+    const normalizedInputs: StatementInput[] = batch.statements.map((statement) => ({
+      subject: {
+        rawIdentifier: statement.subjectRawIdentifier,
+        entityType: parseFideId(statement.subjectFideId).entityType,
+        sourceType: parseFideId(statement.subjectFideId).sourceType,
+      },
+      predicate: {
+        rawIdentifier: statement.predicateRawIdentifier,
+        entityType: "Concept",
+        sourceType: "NetworkResource",
+      },
+      object: {
+        rawIdentifier: statement.objectRawIdentifier,
+        entityType: parseFideId(statement.objectFideId).entityType,
+        sourceType: parseFideId(statement.objectFideId).sourceType,
+      },
+    }));
+
+    const baseDoc = statementDoc.v0.formatStatementInputsAsStatementDoc(normalizedInputs, {
+      defaults: {
+        subject: { sourceType: "NetworkResource" },
+        object: { sourceType: "NetworkResource" },
+      },
+    });
+    output = baseDoc.replace(/^---\n/, "---\ntype: fide-statements\nversion: v0\n");
+  } else {
+    const wires = batch.statements.map((statement) => ({
+      s: statement.subjectFideId,
+      sr: statement.subjectRawIdentifier,
+      p: statement.predicateFideId,
+      pr: statement.predicateRawIdentifier,
+      o: statement.objectFideId,
+      or: statement.objectRawIdentifier,
+    }));
+    output = `${wires.map((wire) => JSON.stringify(wire)).join("\n")}\n`;
+  }
+
   await mkdir(resolve(outPath, ".."), { recursive: true });
-  await writeUtf8(outPath, jsonl);
+  await writeUtf8(outPath, output);
 
   const payload = {
     ok: true,
     root: batch.root,
     statementCount: batch.statements.length,
+    mode: draftMode ? "draft" : "batch",
     outPath,
     statementFideIds: batch.statements.map((statement) => statement.statementFideId),
   };
