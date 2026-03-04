@@ -8,7 +8,7 @@ function helpText(): string {
     "",
     "Groups:",
     "  graph       ingest | query | statements",
-    "  eval        draft",
+    "  eval        prompt",
     "",
     "Global:",
     "  --json      Machine-readable output when supported",

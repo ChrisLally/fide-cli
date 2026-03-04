@@ -19,7 +19,8 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node ./scripts/build.mjs",
+    "build:link": "node ./scripts/build.mjs --link",
     "check-types": "tsc --noEmit"
   },
   "dependencies": {

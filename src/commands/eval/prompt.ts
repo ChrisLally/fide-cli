@@ -1,14 +1,19 @@
 import { readdir } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
 import { resolve } from "node:path";
+import { promisify } from "node:util";
 import {
   buildStatementRawIdentifier,
   compactPredicateRawIdentifier,
   parseFideId,
 } from "@chris-test/fcp";
-import { parseGraphStatementBatchJsonl } from "@chris-test/graph";
+import { parseGraphStatementBatchJsonl, statementDoc } from "@chris-test/graph";
 import type { FideIdStatement } from "@chris-test/evaluation-methods";
 import { getStringFlag, hasFlag, parseArgs } from "../../util/args.js";
 import { printJson, readUtf8, writeUtf8 } from "../../util/io.js";
+
+const execFileAsync = promisify(execFile);
 
 const OWL_SAME_AS_IRI = "https://www.w3.org/2002/07/owl#sameAs";
 const OWL_DIFFERENT_FROM_IRI = "https://www.w3.org/2002/07/owl#differentFrom";
@@ -50,7 +55,16 @@ type PromptAtomicOptions = {
   from: string | null;
   consideration: AtomicConsideration | null;
   evidenceStatement: string | null;
+  agent: string | null;
+  draft: boolean;
   json: boolean;
+};
+
+type ActiveEvalContext = {
+  method: SupportedMethod;
+  target: string;
+  from: string;
+  updatedAt: string;
 };
 
 function utcDatePath(now = new Date()): string {
@@ -68,6 +82,10 @@ function shortFideSuffix(fideId: string): string {
   const m = fideId.match(/0x([a-f0-9]{40})$/i);
   if (!m) return slugify(fideId).slice(-12);
   return m[1]!.slice(-12);
+}
+
+function sha256Hex(input: string): string {
+  return createHash("sha256").update(input).digest("hex");
 }
 
 function normalizeAtomicConsideration(value: string | null): AtomicConsideration | null {
@@ -399,10 +417,14 @@ function buildAtomicPrompt(args: {
     `## ${evidenceSection}`,
     statementTextBlock(args.evidence, sectionByStatementRef),
     "",
-    "## Return JSON",
-    "- decision (supports | contradicts | insufficient)",
-    "- confidence (0.0 to 1.0)",
-    "- reason",
+    "## Draft Command",
+    "- Write the evaluation draft directly with CLI:",
+    "```bash",
+    "fide eval add \\",
+    "  --decision <supports|contradicts|insufficient> \\",
+    "  --confidence <0..1> \\",
+    "  --reason \"<short evidence-grounded rationale>\"",
+    "```",
     "",
     "## Rules",
     "- Use only the statements in this prompt.",
@@ -423,7 +445,7 @@ function buildAtomicPrompt(args: {
 
   if (hasPrimarySourceReport) {
     lines.splice(
-      lines.indexOf("## Return JSON"),
+      lines.indexOf("## Draft Command"),
       0,
       "## Primary Source Report",
       "```",
@@ -455,8 +477,141 @@ function defaultEvalPromptAtomicOutPath(params: {
   ].join("/");
 }
 
+function defaultEvalDraftOutPath(params: {
+  method: SupportedMethod;
+  consideration: AtomicConsideration;
+  targetStatementFideId: string;
+  evidenceStatementFideId: string;
+}): string {
+  const datePath = utcDatePath();
+  const statementSlug = slugify(params.targetStatementFideId);
+  const evidenceShort = shortFideSuffix(params.evidenceStatementFideId);
+  const methodPath = params.method.split("@")[0]!;
+  return [
+    ".fide/evals/drafts",
+    datePath,
+    methodPath,
+    statementSlug,
+    `${params.consideration}--${evidenceShort}.md`,
+  ].join("/");
+}
+
+function defaultActiveContextPath(): string {
+  return ".fide/evals/.active-context.json";
+}
+
+function injectFrontmatterMeta(
+  content: string,
+  meta: {
+    method: string;
+    target: string;
+    batch: string;
+    promptFile: string;
+    promptHash: string;
+    agent: string;
+  },
+): string {
+  const lines = content.replace(/\r\n?/g, "\n").split("\n");
+  if (lines[0]?.trim() !== "---") return content;
+
+  let end = -1;
+  for (let i = 1; i < lines.length; i += 1) {
+    if (lines[i]?.trim() === "---") {
+      end = i;
+      break;
+    }
+  }
+  if (end < 0) return content;
+
+  const metaLines = [
+    "meta:",
+    `  method: ${JSON.stringify(meta.method)}`,
+    `  target: ${JSON.stringify(meta.target)}`,
+    `  batch: ${JSON.stringify(meta.batch)}`,
+    `  promptFile: ${JSON.stringify(meta.promptFile)}`,
+    `  promptHash: ${JSON.stringify(`sha256:${meta.promptHash}`)}`,
+    `  agent: ${JSON.stringify(meta.agent)}`,
+  ];
+
+  const frontmatterBody = lines.slice(1, end);
+  const hasMeta = frontmatterBody.some((line) => line.trimStart().startsWith("meta:"));
+  const mergedBody = hasMeta ? frontmatterBody : [...frontmatterBody, ...metaLines];
+  return [lines[0], ...mergedBody, lines[end], ...lines.slice(end + 1)].join("\n");
+}
+
+function buildAgentPrompt(evalPrompt: string): string {
+  return [
+    "You are drafting Fide graph statements.",
+    "Return ONLY statement lines in this exact format:",
+    "[EntityType:subjectRaw] predicateRawIdentifier [EntityType:objectRaw]",
+    "",
+    "Rules:",
+    "- No frontmatter",
+    "- No prose",
+    "- No markdown code fences",
+    "- One statement per line",
+    "- Use only these entity types unless strictly necessary: Concept, NetworkResource, TextLiteral, IntegerLiteral, DecimalLiteral, BoolLiteral, DateTimeLiteral, Statement",
+    "- Use exact FCP entity type names (e.g. BoolLiteral, not BooleanLiteral).",
+    "- Refer to the target sameAs statement semantically (subject/object raw identifiers and evidence context), not by opaque IDs",
+    "",
+    "Evaluation context:",
+    evalPrompt,
+    "",
+    "Demo command (heredoc, no temp file):",
+    "fide graph statements add --stdin --draft <<'EOF'",
+    "[Concept:https://example.org/spec] https://schema.org/name [TextLiteral/TextLiteral:Example Spec]",
+    "[Concept:https://example.org/spec] https://www.w3.org/2002/07/owl#sameAs [Concept:https://example.org/spec/v1]",
+    "EOF",
+  ].join("\n");
+}
+
+function extractStatementLines(raw: string): string {
+  const lines = raw
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("```"));
+
+  const candidates = lines.filter((line) => /^\[[^\]]+\]\s+\S+\s+\[[^\]]+\]$/.test(line));
+  return candidates.join("\n");
+}
+
+function wrapLinesAsStatementDoc(statementLines: string): string {
+  const linesOnly = extractStatementLines(statementLines);
+  if (!linesOnly) throw new Error("Agent did not return any valid statement lines.");
+
+  const inputs = statementDoc.v0.parseStatementDocToStatementInputs(linesOnly);
+  const baseDoc = statementDoc.v0.formatStatementInputsAsStatementDoc(inputs, {
+    defaults: {
+      subject: { sourceType: "NetworkResource" },
+      object: { sourceType: "NetworkResource" },
+    },
+  });
+  return baseDoc.replace(/^---\n/, "---\ntype: fide-statements\nversion: v0\n");
+}
+
+async function runCodexDraft(
+  prompt: string,
+  context: { method: string; target: string; from: string },
+): Promise<string> {
+  const { stdout } = await execFileAsync("codex", ["exec", prompt], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      FIDE_EVAL_METHOD: context.method,
+      FIDE_EVAL_TARGET: context.target,
+      FIDE_EVAL_FROM: context.from,
+    },
+    maxBuffer: 5 * 1024 * 1024,
+  });
+  return stdout.trim();
+}
+
 function parseOptions(args: string[]): PromptAtomicOptions {
   const { flags } = parseArgs(args);
+  if (hasFlag(flags, "help")) {
+    throw new Error("HELP");
+  }
   const methodRaw = getStringFlag(flags, "method") ?? "temporal-validity/owl-sameAs/Person@v1";
   if (!(methodRaw in METHOD_TARGET_TYPES)) {
     throw new Error(
@@ -477,6 +632,14 @@ function parseOptions(args: string[]): PromptAtomicOptions {
   if (getStringFlag(flags, "evidence-statement") && !consideration) {
     throw new Error("--evidence-statement requires --consideration.");
   }
+  const agent = getStringFlag(flags, "agent");
+  const draft = hasFlag(flags, "draft");
+  if (draft && !agent) {
+    throw new Error("--draft requires --agent <codex>.");
+  }
+  if (agent && !draft) {
+    throw new Error("--agent requires --draft. Use --draft to write statement-doc drafts.");
+  }
 
   return {
     method,
@@ -484,6 +647,8 @@ function parseOptions(args: string[]): PromptAtomicOptions {
     from: getStringFlag(flags, "from"),
     consideration,
     evidenceStatement: getStringFlag(flags, "evidence-statement"),
+    agent,
+    draft,
     json: hasFlag(flags, "json"),
   };
 }
@@ -515,6 +680,14 @@ export async function runEvalPrompt(args: string[]): Promise<number> {
       return 1;
     }
 
+    const activeContext: ActiveEvalContext = {
+      method: options.method,
+      target: options.target,
+      from: batchPath,
+      updatedAt: new Date().toISOString(),
+    };
+    await writeUtf8(defaultActiveContextPath(), `${JSON.stringify(activeContext, null, 2)}\n`);
+
     const contextStatements = buildPromptContextStatements(target, statements);
     const considerations = options.consideration ? [options.consideration] : [...ALL_ATOMIC_CONSIDERATIONS];
     const definitionsMarkdownLines = buildDefinitionsMarkdown();
@@ -523,6 +696,7 @@ export async function runEvalPrompt(args: string[]): Promise<number> {
       consideration: AtomicConsideration;
       evidenceStatementFideId: string;
       outPath: string;
+      draftOutPath: string | null;
       promptChars: number;
       supportingStatementCount: number;
     }> = [];
@@ -562,10 +736,40 @@ export async function runEvalPrompt(args: string[]): Promise<number> {
           evidenceStatementFideId: evidence.statementFideId,
         });
         await writeUtf8(outPath, prompt.endsWith("\n") ? prompt : `${prompt}\n`);
+        let draftOutPath: string | null = null;
+        if (options.agent) {
+          if (options.agent !== "codex") {
+            throw new Error(`Unsupported agent: ${options.agent}. Supported: codex`);
+          }
+          const agentPrompt = buildAgentPrompt(prompt);
+          const promptHash = sha256Hex(agentPrompt);
+          const lines = await runCodexDraft(agentPrompt, {
+            method: options.method,
+            target: options.target,
+            from: batchPath,
+          });
+          const draftContent = wrapLinesAsStatementDoc(lines);
+          const withMeta = injectFrontmatterMeta(draftContent, {
+            method: options.method,
+            target: options.target,
+            batch: batchPath,
+            promptFile: outPath,
+            promptHash,
+            agent: options.agent,
+          });
+          draftOutPath = defaultEvalDraftOutPath({
+            method: options.method,
+            consideration: currentConsideration,
+            targetStatementFideId: target.statementFideId,
+            evidenceStatementFideId: evidence.statementFideId,
+          });
+          await writeUtf8(draftOutPath, `${withMeta.trimEnd()}\n`);
+        }
         generated.push({
           consideration: currentConsideration,
           evidenceStatementFideId: evidence.statementFideId,
           outPath,
+          draftOutPath,
           promptChars: prompt.length,
           supportingStatementCount: supportingStatements.length,
         });
@@ -582,6 +786,7 @@ export async function runEvalPrompt(args: string[]): Promise<number> {
       mode: "prompt",
       method: options.method,
       target: options.target,
+      agent: options.agent ?? "none",
       from: batchPath,
       generatedCount: generated.length,
       generated,
@@ -591,6 +796,9 @@ export async function runEvalPrompt(args: string[]): Promise<number> {
     else generated.forEach((item) => console.log(item.outPath));
     return 0;
   } catch (error) {
+    if (error instanceof Error && error.message === "HELP") {
+      return 2;
+    }
     console.error(error instanceof Error ? error.message : String(error));
     return 1;
   }

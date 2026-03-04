@@ -1,5 +1,5 @@
-import { runEvalDraft } from "./draft.js";
 import { evalHelp } from "./help.js";
+import { runEvalAdd } from "./add.js";
 import { runEvalPrompt } from "./prompt.js";
 
 /**
@@ -11,8 +11,8 @@ export async function runEvalCommand(command: string | undefined, args: string[]
     return 0;
   }
 
-  if (command === "draft") {
-    const code = await runEvalDraft(args);
+  if (command === "prompt") {
+    const code = await runEvalPrompt(args);
     if (code === 2) {
       console.log(evalHelp());
       return 0;
@@ -20,8 +20,13 @@ export async function runEvalCommand(command: string | undefined, args: string[]
     return code;
   }
 
-  if (command === "prompt") {
-    return runEvalPrompt(args);
+  if (command === "add") {
+    const code = await runEvalAdd(args);
+    if (code === 2) {
+      console.log(evalHelp());
+      return 0;
+    }
+    return code;
   }
 
   console.error(`Unknown eval command: ${command}`);
