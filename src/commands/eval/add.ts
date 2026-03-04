@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { parseGraphStatementBatchJsonl, statementDoc } from "@chris-test/graph";
 import { buildStatementRawIdentifier, type StatementInput } from "@chris-test/fcp";
@@ -14,27 +15,97 @@ type EvalAddOptions = {
   method: string | null;
   target: string | null;
   from: string | null;
+  consideration: string | null;
+  evidenceStatement: string | null;
+  promptFile: string | null;
+  considerationRef: string | null;
   decision: "supports" | "contradicts" | "insufficient";
   confidence: number;
   reason: string;
   json: boolean;
 };
 
-type ActiveEvalContext = {
+type EvalContext = {
   method?: string;
   target?: string;
   from?: string;
+  consideration?: string;
+  evidenceStatement?: string;
+  promptFile?: string;
+  considerationRef?: string;
 };
 
-function readEnvContext(): ActiveEvalContext {
+function readEnvContext(): EvalContext {
   const method = process.env.FIDE_EVAL_METHOD?.trim();
   const target = process.env.FIDE_EVAL_TARGET?.trim();
   const from = process.env.FIDE_EVAL_FROM?.trim();
+  const consideration = process.env.FIDE_EVAL_CONSIDERATION?.trim();
+  const evidenceStatement = process.env.FIDE_EVAL_EVIDENCE_STATEMENT?.trim();
+  const promptFile = process.env.FIDE_EVAL_PROMPT_FILE?.trim();
+  const considerationRef = process.env.FIDE_EVAL_CONSIDERATION_REF?.trim();
   return {
     method: method && method.length > 0 ? method : undefined,
     target: target && target.length > 0 ? target : undefined,
     from: from && from.length > 0 ? from : undefined,
+    consideration: consideration && consideration.length > 0 ? consideration : undefined,
+    evidenceStatement: evidenceStatement && evidenceStatement.length > 0 ? evidenceStatement : undefined,
+    promptFile: promptFile && promptFile.length > 0 ? promptFile : undefined,
+    considerationRef: considerationRef && considerationRef.length > 0 ? considerationRef : undefined,
   };
+}
+
+type GitContext = {
+  root: string;
+  originHttps: string;
+  branch: string;
+};
+
+let cachedGitContext: GitContext | null = null;
+
+function toOriginHttps(origin: string): string | null {
+  const trimmed = origin.trim();
+  if (trimmed.startsWith("https://github.com/")) {
+    return trimmed.replace(/\.git$/, "");
+  }
+  const ssh = trimmed.match(/^git@github\.com:(.+)$/);
+  if (!ssh) return null;
+  return `https://github.com/${ssh[1]!.replace(/\.git$/, "")}`;
+}
+
+function getGitContext(): GitContext | null {
+  if (cachedGitContext) return cachedGitContext;
+  try {
+    const root = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+    }).trim();
+    const originRaw = execFileSync("git", ["remote", "get-url", "origin"], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+    }).trim();
+    const originHttps = toOriginHttps(originRaw);
+    if (!originHttps) return null;
+    const branch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+    }).trim() || "main";
+    cachedGitContext = { root, originHttps, branch };
+    return cachedGitContext;
+  } catch {
+    return null;
+  }
+}
+
+function toGitHubUrl(pathLike: string | null): string | null {
+  if (!pathLike) return null;
+  if (pathLike.startsWith("https://")) return pathLike;
+
+  const git = getGitContext();
+  if (!git) return pathLike;
+  const abs = resolve(process.cwd(), pathLike);
+  if (!abs.startsWith(git.root)) return pathLike;
+  const rel = abs.slice(git.root.length).replace(/^\/+/, "");
+  return `${git.originHttps}/blob/${git.branch}/${rel}`;
 }
 
 function utcDatePath(now = new Date()): string {
@@ -58,6 +129,10 @@ function injectFrontmatterMeta(
     method: string;
     target: string;
     batch: string | null;
+    consideration: string | null;
+    considerationRef: string | null;
+    evidenceStatement: string | null;
+    promptFile: string | null;
     source: string;
   },
 ): string {
@@ -78,6 +153,10 @@ function injectFrontmatterMeta(
     `  method: ${JSON.stringify(meta.method)}`,
     `  target: ${JSON.stringify(meta.target)}`,
     `  batch: ${JSON.stringify(meta.batch ?? "none")}`,
+    `  consideration: ${JSON.stringify(meta.consideration ?? "none")}`,
+    `  considerationRef: ${JSON.stringify(meta.considerationRef ?? "none")}`,
+    `  evidenceStatement: ${JSON.stringify(meta.evidenceStatement ?? "none")}`,
+    `  promptFile: ${JSON.stringify(meta.promptFile ?? "none")}`,
     `  source: ${JSON.stringify(meta.source)}`,
   ];
 
@@ -93,6 +172,10 @@ function parseOptions(args: string[]): EvalAddOptions {
 
   const method = getStringFlag(flags, "method");
   const target = getStringFlag(flags, "target");
+  const consideration = getStringFlag(flags, "consideration");
+  const evidenceStatement = getStringFlag(flags, "evidence-statement");
+  const promptFile = getStringFlag(flags, "prompt-file");
+  const considerationRef = getStringFlag(flags, "consideration-ref");
   const decisionRaw = getStringFlag(flags, "decision");
   const confidenceRaw = getStringFlag(flags, "confidence");
   const reason = getStringFlag(flags, "reason");
@@ -115,6 +198,10 @@ function parseOptions(args: string[]): EvalAddOptions {
     method,
     target,
     from: getStringFlag(flags, "from"),
+    consideration,
+    evidenceStatement,
+    promptFile,
+    considerationRef,
     decision: decision as EvalAddOptions["decision"],
     confidence,
     reason,
@@ -122,28 +209,20 @@ function parseOptions(args: string[]): EvalAddOptions {
   };
 }
 
-async function readActiveContext(): Promise<ActiveEvalContext> {
-  const path = resolve(process.cwd(), ".fide/evals/.active-context.json");
-  try {
-    const raw = await readUtf8(path);
-    const parsed = JSON.parse(raw) as ActiveEvalContext;
-    return parsed ?? {};
-  } catch {
-    return {};
-  }
-}
-
 export async function runEvalAdd(args: string[]): Promise<number> {
   try {
     const options = parseOptions(args);
     const envContext = readEnvContext();
-    const active = await readActiveContext();
-    const method = options.method ?? envContext.method ?? active.method ?? null;
-    const target = options.target ?? envContext.target ?? active.target ?? null;
-    const from = options.from ?? envContext.from ?? active.from ?? null;
-    if (!method) throw new Error("Missing --method and no active context found. Run `fide eval prompt ...` first or pass --method.");
-    if (!target) throw new Error("Missing --target and no active context found. Run `fide eval prompt ...` first or pass --target.");
-    if (!from) throw new Error("Missing --from and no active context found. Run `fide eval prompt ...` first or pass --from.");
+    const method = options.method ?? envContext.method ?? null;
+    const target = options.target ?? envContext.target ?? null;
+    const from = options.from ?? envContext.from ?? null;
+    const consideration = options.consideration ?? envContext.consideration ?? null;
+    const evidenceStatement = options.evidenceStatement ?? envContext.evidenceStatement ?? null;
+    const promptFile = options.promptFile ?? envContext.promptFile ?? null;
+    const considerationRef = options.considerationRef ?? envContext.considerationRef ?? null;
+    if (!method) throw new Error("Missing --method (or FIDE_EVAL_METHOD).");
+    if (!target) throw new Error("Missing --target (or FIDE_EVAL_TARGET).");
+    if (!from) throw new Error("Missing --from (or FIDE_EVAL_FROM).");
 
     const batchPath = resolve(process.cwd(), from);
     const batchRaw = await readUtf8(batchPath);
@@ -223,7 +302,11 @@ export async function runEvalAdd(args: string[]): Promise<number> {
     const withMeta = injectFrontmatterMeta(baseDoc, {
       method,
       target,
-      batch: batchPath,
+      batch: toGitHubUrl(batchPath),
+      consideration,
+      considerationRef,
+      evidenceStatement,
+      promptFile: toGitHubUrl(promptFile),
       source: "eval-add",
     });
 
@@ -241,7 +324,11 @@ export async function runEvalAdd(args: string[]): Promise<number> {
       mode: "add",
       method,
       target,
-      from: batchPath,
+      from: toGitHubUrl(batchPath),
+      consideration,
+      considerationRef,
+      evidenceStatement,
+      promptFile: toGitHubUrl(promptFile),
       outPath,
       decision: options.decision,
       confidence: options.confidence,
