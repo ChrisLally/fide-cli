@@ -8,6 +8,7 @@ function helpText(): string {
     "",
     "Groups:",
     "  graph       ingest | query | statements",
+    "  eval        draft",
     "",
     "Global:",
     "  --json      Machine-readable output when supported",
@@ -35,6 +36,10 @@ export async function runCli(argv: string[]): Promise<number> {
     case "graph": {
       const { runGraphCommand } = await import("./commands/graph/index.js");
       return runGraphCommand(command, rest);
+    }
+    case "eval": {
+      const { runEvalCommand } = await import("./commands/eval/index.js");
+      return runEvalCommand(command, rest);
     }
     default:
       console.error(`Unknown group: ${group}`);

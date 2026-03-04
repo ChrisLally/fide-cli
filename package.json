@@ -23,6 +23,7 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
+    "@chris-test/evaluation-methods": "workspace:*",
     "@chris-test/fcp": "workspace:*",
     "@chris-test/graph": "workspace:*"
   },
